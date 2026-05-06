@@ -9,6 +9,7 @@ package validation_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,28 @@ func TestOSFileChecker_Exists(t *testing.T) {
 	}
 }
 
+func TestOSFileChecker_Exists_SymlinkTraversal(t *testing.T) {
+	t.Parallel()
+
+	checker := validation.OSFileChecker{}
+
+	safeDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("secret"), 0o600))
+
+	symlinkPath := filepath.Join(safeDir, "link.pem")
+	if err := os.Symlink(outsideFile, symlinkPath); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink creation not supported")
+		}
+		require.NoError(t, err)
+	}
+
+	err := checker.Exists(symlinkPath)
+	require.Error(t, err)
+}
+
 func TestOSDirectoryChecker_Exists(t *testing.T) {
 	t.Parallel()
 
@@ -111,4 +134,24 @@ func TestOSDirectoryChecker_Exists(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOSDirectoryChecker_Exists_SymlinkTraversal(t *testing.T) {
+	t.Parallel()
+
+	checker := validation.OSDirectoryChecker{}
+
+	safeDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	symlinkPath := filepath.Join(safeDir, "link-dir")
+	if err := os.Symlink(outsideDir, symlinkPath); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlink creation not supported")
+		}
+		require.NoError(t, err)
+	}
+
+	err := checker.Exists(symlinkPath)
+	require.Error(t, err)
 }

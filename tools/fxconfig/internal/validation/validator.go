@@ -54,7 +54,24 @@ func (OSFileChecker) Exists(path string) error {
 		return errors.New("path traversal not allowed")
 	}
 
-	info, err := os.Stat(clean)
+	absClean, err := filepath.Abs(clean)
+	if err != nil {
+		return err
+	}
+
+	real, err := filepath.EvalSymlinks(absClean)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %s", path)
+		}
+		return err
+	}
+
+	if !isWithinBase(real, filepath.Dir(absClean)) {
+		return errors.New("resolved path escapes allowed base")
+	}
+
+	info, err := os.Stat(real)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("file does not exist: %s", path)
@@ -83,7 +100,24 @@ func (OSDirectoryChecker) Exists(path string) error {
 		return errors.New("path traversal not allowed")
 	}
 
-	info, err := os.Stat(clean)
+	absClean, err := filepath.Abs(clean)
+	if err != nil {
+		return err
+	}
+
+	real, err := filepath.EvalSymlinks(absClean)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("directory does not exist: %s", path)
+		}
+		return err
+	}
+
+	if !isWithinBase(real, absClean) {
+		return errors.New("resolved path escapes allowed base")
+	}
+
+	info, err := os.Stat(real)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("directory does not exist: %s", path)
@@ -94,4 +128,15 @@ func (OSDirectoryChecker) Exists(path string) error {
 		return fmt.Errorf("not a directory: %s", path)
 	}
 	return nil
+}
+
+func isWithinBase(realPath, basePath string) bool {
+	rel, err := filepath.Rel(basePath, realPath)
+	if err != nil {
+		return false
+	}
+	if rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
